@@ -373,6 +373,7 @@ static void handleAnyDeviceErrors(Error * err)
                                    "raw",
                                    true, false,
                                    false, 0,
+                                   false, 0,
                                    &err);
         qemu_mutex_unlock_iothread();
         handleAnyDeviceErrors(err);
