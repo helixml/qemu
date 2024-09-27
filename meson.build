@@ -47,7 +47,6 @@ bsd_oses = ['gnu/kfreebsd', 'freebsd', 'netbsd', 'openbsd', 'dragonfly', 'darwin
 supported_oses = ['windows', 'freebsd', 'netbsd', 'openbsd', 'darwin', 'sunos', 'linux']
 supported_cpus = ['ppc', 'ppc64', 's390x', 'riscv32', 'riscv64', 'x86', 'x86_64',
   'arm', 'aarch64', 'loongarch64', 'mips', 'mips64', 'sparc64']
-tcti_supported_cpus = ['aarch64']
 
 cpu = host_machine.cpu_family()
 
@@ -817,8 +816,6 @@ if host_os == 'netbsd'
   endif
 endif
 
-tcti_gadgets = files()
-
 tcg_arch = host_arch
 if get_option('tcg').allowed()
   if host_arch == 'unknown'
@@ -835,87 +832,6 @@ if get_option('tcg').allowed()
   endif
   if get_option('tcg_interpreter')
     tcg_arch = 'tci'
-  elif get_option('tcg_threaded_interpreter')
-    if cpu not in tcti_supported_cpus
-      error('Unsupported CPU @0@ for TCTI, try --enable-tcg-interpreter'.format(cpu))
-    else
-      warning('TCTI is extremely experimental and incomplete! Things might break!')
-      tcg_arch = '@0@-tcti'.format(cpu)
-    endif
-
-    # Tell our compiler how to generate our TCTI gadgets.
-    gadget_generator = 'tcg/@0@/tcti-gadget-gen.py'.format(tcg_arch)
-    tcti_sources = [
-        'tcti_gadgets.h',
-        'tcti_misc_gadgets.c',
-        'tcti_misc_gadgets.h',
-        'tcti_setcond_gadgets.c',
-        'tcti_setcond_gadgets.h',
-        'tcti_brcond_gadgets.c',
-        'tcti_brcond_gadgets.h',
-        'tcti_mov_gadgets.c',
-        'tcti_mov_gadgets.h',
-        'tcti_load_signed_gadgets.c',
-        'tcti_load_signed_gadgets.h',
-        'tcti_load_unsigned_gadgets.c',
-        'tcti_load_unsigned_gadgets.h',
-        'tcti_store_gadgets.c',
-        'tcti_store_gadgets.h',
-        'tcti_arithmetic_gadgets.c',
-        'tcti_arithmetic_gadgets.h',
-        'tcti_logical_gadgets.c',
-        'tcti_logical_gadgets.h',
-        'tcti_extension_gadgets.c',
-        'tcti_extension_gadgets.h',
-        'tcti_bitwise_gadgets.c',
-        'tcti_bitwise_gadgets.h',
-        'tcti_byteswap_gadgets.c',
-        'tcti_byteswap_gadgets.h',
-        'tcti_qemu_ld_aligned_signed_le_gadgets.c',
-        'tcti_qemu_ld_aligned_signed_le_gadgets.h',
-        'tcti_qemu_ld_unaligned_signed_le_gadgets.c',
-        'tcti_qemu_ld_unaligned_signed_le_gadgets.h',
-        'tcti_qemu_ld_slowpath_signed_le_gadgets.c',
-        'tcti_qemu_ld_slowpath_signed_le_gadgets.h',
-        'tcti_qemu_ld_aligned_unsigned_le_gadgets.c',
-        'tcti_qemu_ld_aligned_unsigned_le_gadgets.h',
-        'tcti_qemu_ld_unaligned_unsigned_le_gadgets.c',
-        'tcti_qemu_ld_unaligned_unsigned_le_gadgets.h',
-        'tcti_qemu_ld_slowpath_unsigned_le_gadgets.c',
-        'tcti_qemu_ld_slowpath_unsigned_le_gadgets.h',
-        'tcti_qemu_ld_aligned_be_gadgets.c',
-        'tcti_qemu_ld_aligned_be_gadgets.h',
-        'tcti_qemu_ld_unaligned_be_gadgets.c',
-        'tcti_qemu_ld_unaligned_be_gadgets.h',
-        'tcti_qemu_ld_slowpath_be_gadgets.c',
-        'tcti_qemu_ld_slowpath_be_gadgets.h',
-        'tcti_qemu_st_aligned_le_gadgets.c',
-        'tcti_qemu_st_aligned_le_gadgets.h',
-        'tcti_qemu_st_unaligned_le_gadgets.c',
-        'tcti_qemu_st_unaligned_le_gadgets.h',
-        'tcti_qemu_st_slowpath_le_gadgets.c',
-        'tcti_qemu_st_slowpath_le_gadgets.h',
-        'tcti_qemu_st_aligned_be_gadgets.c',
-        'tcti_qemu_st_aligned_be_gadgets.h',
-        'tcti_qemu_st_unaligned_be_gadgets.c',
-        'tcti_qemu_st_unaligned_be_gadgets.h',
-        'tcti_qemu_st_slowpath_be_gadgets.c',
-        'tcti_qemu_st_slowpath_be_gadgets.h',
-        'tcti_simd_base_gadgets.c',
-        'tcti_simd_base_gadgets.h',
-        'tcti_simd_arithmetic_gadgets.c',
-        'tcti_simd_arithmetic_gadgets.h',
-        'tcti_simd_logical_gadgets.c',
-        'tcti_simd_logical_gadgets.h',
-        'tcti_simd_immediate_gadgets.c',
-        'tcti_simd_immediate_gadgets.h',
-    ]
-    tcti_gadgets = custom_target('tcti-gadgets.h',
-                              output: tcti_sources,
-                              input: gadget_generator,
-                              command: [find_program(gadget_generator)],
-                              build_by_default: true,
-                              build_always_stale: false)
   elif host_arch == 'x86_64'
     tcg_arch = 'i386'
   elif host_arch == 'ppc64'
@@ -2475,7 +2391,6 @@ config_host_data.set('CONFIG_SOLARIS', host_os == 'sunos')
 if get_option('tcg').allowed()
   config_host_data.set('CONFIG_TCG', 1)
   config_host_data.set('CONFIG_TCG_INTERPRETER', tcg_arch == 'tci')
-  config_host_data.set('CONFIG_TCG_THREADED_INTERPRETER', tcg_arch.endswith('tcti'))
 endif
 config_host_data.set('CONFIG_TPM', have_tpm)
 config_host_data.set('CONFIG_TSAN', get_option('tsan'))
@@ -3722,12 +3637,6 @@ endif
 common_ss.add(pagevary)
 specific_ss.add(files('page-target.c', 'page-vary-target.c'))
 
-# FIXME: This is being used for now for development quickness, but these realy should be
-# added to a gadget-specific shared library (tcti_ss).
-if get_option('tcg').allowed() and tcg_arch.endswith('tcti')
-  specific_ss.add(tcti_gadgets)
-endif
-
 subdir('backends')
 subdir('disas')
 subdir('migration')
@@ -4519,8 +4428,6 @@ summary_info += {'TCG support':       config_all_accel.has_key('CONFIG_TCG')}
 if config_all_accel.has_key('CONFIG_TCG')
   if get_option('tcg_interpreter')
     summary_info += {'TCG backend':   'TCI (TCG with bytecode interpreter, slow)'}
-  elif get_option('tcg_threaded_interpreter')
-    summary_info += {'TCG backend':   'TCTI (TCG with threaded-dispatch bytecode interpreter, experimental and slow; but faster than TCI)'}
   else
     summary_info += {'TCG backend':   'native (@0@)'.format(cpu)}
   endif

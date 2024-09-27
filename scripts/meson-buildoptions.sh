@@ -51,9 +51,6 @@ meson_options_help() {
   printf "%s\n" '  --enable-shared-lib      Build QEMU as a shared library'
   printf "%s\n" '  --enable-strip           Strip targets on install'
   printf "%s\n" '  --enable-tcg-interpreter TCG with bytecode interpreter (slow)'
-  printf "%s\n" '  --enable-tcg-threaded-interpreter'
-  printf "%s\n" '                           TCG with threaded-dispatch bytecode interpreter'
-  printf "%s\n" '                           (experimental and slow, but less slow than TCI)'
   printf "%s\n" '  --enable-trace-backends=CHOICES'
   printf "%s\n" '                           Set available tracing backends [log] (choices:'
   printf "%s\n" '                           dtrace/ftrace/log/nop/simple/syslog/ust)'
@@ -67,9 +64,9 @@ meson_options_help() {
   printf "%s\n" '  --libdir=VALUE           Library directory [system default]'
   printf "%s\n" '  --libexecdir=VALUE       Library executable directory [libexec]'
   printf "%s\n" '  --localedir=VALUE        Locale data directory [share/locale]'
-  printf "%s\n" '  --localstatedir=VALUE    Localstate data directory [var]'
+  printf "%s\n" '  --localstatedir=VALUE    Localstate data directory [/var/local]'
   printf "%s\n" '  --mandir=VALUE           Manual page directory [share/man]'
-  printf "%s\n" '  --prefix=VALUE           Installation prefix [/opt/homebrew]'
+  printf "%s\n" '  --prefix=VALUE           Installation prefix [/usr/local]'
   printf "%s\n" '  --qemu-ga-distro=VALUE   second path element in qemu-ga registry entries'
   printf "%s\n" '                           [Linux]'
   printf "%s\n" '  --qemu-ga-manufacturer=VALUE'
@@ -502,8 +499,6 @@ _meson_option_parse() {
     --disable-tcg) printf "%s" -Dtcg=disabled ;;
     --enable-tcg-interpreter) printf "%s" -Dtcg_interpreter=true ;;
     --disable-tcg-interpreter) printf "%s" -Dtcg_interpreter=false ;;
-    --enable-tcg-threaded-interpreter) printf "%s" -Dtcg_threaded_interpreter=true ;;
-    --disable-tcg-threaded-interpreter) printf "%s" -Dtcg_threaded_interpreter=false ;;
     --tls-priority=*) quote_sh "-Dtls_priority=$2" ;;
     --enable-tools) printf "%s" -Dtools=enabled ;;
     --disable-tools) printf "%s" -Dtools=disabled ;;
