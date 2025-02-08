@@ -218,7 +218,7 @@ void hvf_kick_vcpu_thread(CPUState *cpu)
     hv_vcpu_interrupt(&cpu->accel->fd, 1);
 }
 
-int hvf_arch_init(void)
+int hvf_arch_init(MachineState *ms)
 {
     return 0;
 }

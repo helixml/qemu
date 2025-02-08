@@ -771,7 +771,7 @@ void cpu_address_space_init(CPUState *cpu, int asidx,
     newas = &cpu->cpu_ases[asidx];
     newas->cpu = cpu;
     newas->as = as;
-    if (tcg_enabled()) {
+    if (tcg_enabled() || hvf_enabled()) {
         newas->tcg_as_listener.log_global_after_sync = tcg_log_global_after_sync;
         newas->tcg_as_listener.commit = tcg_commit;
         newas->tcg_as_listener.name = "tcg";

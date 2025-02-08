@@ -346,7 +346,7 @@ static int hvf_accel_init(MachineState *ms)
     hvf_state = s;
     memory_listener_register(&hvf_memory_listener, &address_space_memory);
 
-    return hvf_arch_init();
+    return hvf_arch_init(ms);
 }
 
 static inline int hvf_gdbstub_sstep_flags(void)

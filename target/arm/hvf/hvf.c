@@ -37,6 +37,17 @@
 
 #include "gdbstub/enums.h"
 
+#if defined(CONFIG_TCG)
+#include "accel/tcg/internal-common.h"
+#include "accel/tcg/tcg-accel-ops.h"
+#include "exec/tb-flush.h"
+#include "hw/core/cpu.h"
+#include "qapi/error.h"
+#include "qemu/units.h"
+#include "system/tcg.h"
+#include "tcg/startup.h"
+#endif /* defined(CONFIG_TCG) */
+
 #define MDSCR_EL1_SS_SHIFT  0
 #define MDSCR_EL1_MDE_SHIFT 15
 
@@ -149,6 +160,17 @@ void hvf_arm_init_debug(void)
     hw_watchpoints =
         g_array_sized_new(true, true, sizeof(HWWatchpoint), max_hw_wps);
 }
+
+#if defined(CONFIG_TCG)
+void hvf_arm_init_emulator(int splitwx, unsigned max_cpus)
+{
+    mttcg_enabled = true;
+    page_init();
+    tb_htable_init();
+    tcg_init(64 * MiB, splitwx, max_cpus);
+    tcg_prologue_init();
+}
+#endif /* defined(CONFIG_TCG) */
 
 #define HVF_SYSREG(crn, crm, op0, op1, op2) \
         ENCODE_AA64_CP_REG(CP_REG_ARM64_SYSREG_CP, crn, crm, op0, op1, op2)
@@ -968,6 +990,9 @@ void hvf_arm_set_cpu_features_from_host(ARMCPU *cpu)
 
 void hvf_arch_vcpu_destroy(CPUState *cpu)
 {
+#if defined(CONFIG_TCG)
+    tcg_exec_unrealizefn(cpu);
+#endif
 }
 
 hv_return_t hvf_arch_vm_create(MachineState *ms, uint32_t pa_range)
@@ -1060,13 +1085,26 @@ int hvf_arch_init_vcpu(CPUState *cpu)
                               arm_cpu->isar.id_aa64mmfr0);
     assert_hvf_ok(ret);
 
+    /* enable TCG emulator */
+#if defined(CONFIG_TCG)
+    tcg_register_thread();
+    tcg_cpu_init_cflags(cpu, current_machine->smp.max_cpus > 1);
+    tcg_exec_realizefn(cpu, &error_fatal);
+#endif
+
     return 0;
 }
 
 void hvf_kick_vcpu_thread(CPUState *cpu)
 {
-    cpus_kick_thread(cpu);
-    hv_vcpus_exit(&cpu->accel->fd, 1);
+    if (cpu->emulation_enabled) {
+        cpu_exit(cpu);
+    } else {
+        cpus_kick_thread(cpu);
+        if (cpu->accel) {
+            hv_vcpus_exit(&cpu->accel->fd, 1);
+        }
+    }
 }
 
 static void hvf_raise_exception(CPUState *cpu, uint32_t excp,
@@ -1881,6 +1919,50 @@ static inline uint64_t sign_extend(uint64_t value, uint32_t bits)
     return (uint64_t)((int64_t)(value << (64 - bits)) >> (64 - bits));
 }
 
+#if defined(CONFIG_TCG)
+static int emulate_single_instruction(CPUState *cpu)
+{
+    ARMCPU *arm_cpu = ARM_CPU(cpu);
+    CPUARMState *env = &arm_cpu->env;
+    int prev_ss_enable = cpu->singlestep_enabled;
+    int ret;
+
+    cpu_synchronize_state(cpu);
+    arm_rebuild_hflags(env);
+    cpu_emulate(cpu, true);
+    cpu_single_step(cpu, SSTEP_NODEBUG | SSTEP_ENABLE);
+    do {
+        if (cpu_can_run(cpu)) {
+            bql_unlock();
+            ret = tcg_cpu_exec(cpu);
+            bql_lock();
+            if (ret == EXCP_ATOMIC) {
+                bql_unlock();
+                cpu_exec_step_atomic(cpu);
+                bql_lock();
+                ret = 0;
+            }
+            /* retry if we got an interrupt */
+            if (ret != EXCP_INTERRUPT) {
+                break;
+            }
+        }
+
+        qatomic_set_mb(&cpu->exit_request, 0);
+        qemu_wait_io_event(cpu);
+    } while (!cpu->unplug || cpu_can_run(cpu));
+    cpu_single_step(cpu, prev_ss_enable);
+    cpu_emulate(cpu, false);
+    cpu->accel->dirty = true;
+    flush_cpu_state(cpu);
+    if (!ret && prev_ss_enable) {
+        /* if single-stepping, always return EXCP_DEBUG */
+        ret = EXCP_DEBUG;
+    }
+    return ret;
+}
+#endif
+
 int hvf_vcpu_exec(CPUState *cpu)
 {
     ARMCPU *arm_cpu = ARM_CPU(cpu);
@@ -1993,7 +2075,15 @@ int hvf_vcpu_exec(CPUState *cpu)
             break;
         }
 
+#if defined(CONFIG_TCG)
+        if (unlikely(!isv)) {
+            ret = emulate_single_instruction(cpu);
+            advance_pc = false;
+            break;
+        }
+#else
         assert(isv);
+#endif
 
         if (iswrite) {
             val = hvf_get_reg(cpu, srt);
@@ -2124,13 +2214,17 @@ static void hvf_vm_state_change(void *opaque, bool running, RunState state)
     }
 }
 
-int hvf_arch_init(void)
+int hvf_arch_init(MachineState *ms)
 {
     hvf_state->vtimer_offset = mach_absolute_time();
     vmstate_register(NULL, 0, &vmstate_hvf_vtimer, &vtimer);
     qemu_add_vm_change_state_handler(hvf_vm_state_change, &vtimer);
 
     hvf_arm_init_debug();
+
+#if defined(CONFIG_TCG)
+    hvf_arm_init_emulator(0, ms->smp.max_cpus);
+#endif
 
     return 0;
 }

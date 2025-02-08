@@ -41,4 +41,9 @@ static inline uint32_t hvf_arm_get_max_ipa_bit_size(void)
 
 #endif
 
+/**
+ * hvf_arm_init_emulator() - initialize TCG emulator
+ */
+void hvf_arm_init_emulator(int splitwx, unsigned max_cpus);
+
 #endif
