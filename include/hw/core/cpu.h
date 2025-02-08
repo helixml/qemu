@@ -1072,6 +1072,7 @@ void qemu_init_vcpu(CPUState *cpu);
 #define SSTEP_ENABLE  0x1  /* Enable simulated HW single stepping */
 #define SSTEP_NOIRQ   0x2  /* Do not use IRQ while single stepping */
 #define SSTEP_NOTIMER 0x4  /* Do not Timers while single stepping */
+#define SSTEP_NODEBUG 0x8  /* Single-stepping is not for debugging */
 
 /**
  * cpu_single_step:

@@ -322,9 +322,12 @@ void list_cpus(void)
    CPU loop after each instruction */
 void cpu_single_step(CPUState *cpu, int enabled)
 {
-    if (cpu->singlestep_enabled != enabled) {
-        cpu->singlestep_enabled = enabled;
+    int previous = cpu->singlestep_enabled;
+    bool prev_debug_en = previous && !(previous & SSTEP_NODEBUG);
+    bool cur_debug_en = enabled && !(enabled & SSTEP_NODEBUG);
 
+    cpu->singlestep_enabled = enabled;
+    if (prev_debug_en != cur_debug_en) {
 #if !defined(CONFIG_USER_ONLY)
         const AccelOpsClass *ops = cpus_get_accel();
         if (ops->update_guest_debug) {

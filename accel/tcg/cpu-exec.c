@@ -349,7 +349,7 @@ static bool check_for_breakpoints_slow(CPUState *cpu, vaddr pc,
      * so that one could (gdb) singlestep into the guest kernel's
      * architectural breakpoint handler.
      */
-    if (cpu->singlestep_enabled) {
+    if (cpu->singlestep_enabled && !(cpu->singlestep_enabled & SSTEP_NODEBUG)) {
         return false;
     }
 
@@ -529,7 +529,11 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
      * is handled in cpu_handle_exception.
      */
     if (unlikely(cpu->singlestep_enabled) && cpu->exception_index == -1) {
-        cpu->exception_index = EXCP_DEBUG;
+        if (!(cpu->singlestep_enabled & SSTEP_NODEBUG)) {
+            cpu->exception_index = EXCP_DEBUG;
+        } else {
+            cpu->exception_index = EXCP_SINGLESTEP;
+        }
         cpu_loop_exit(cpu);
     }
 
@@ -781,13 +785,20 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
         cpu->exception_index = -1;
 
         if (unlikely(cpu->singlestep_enabled)) {
-            /*
-             * After processing the exception, ensure an EXCP_DEBUG is
-             * raised when single-stepping so that GDB doesn't miss the
-             * next instruction.
-             */
-            *ret = EXCP_DEBUG;
-            cpu_handle_debug_exception(cpu);
+            if (!(cpu->singlestep_enabled & SSTEP_NODEBUG)) {
+                /*
+                 * After processing the exception, ensure an EXCP_DEBUG is
+                 * raised when single-stepping so that GDB doesn't miss the
+                 * next instruction.
+                 */
+                *ret = EXCP_DEBUG;
+                cpu_handle_debug_exception(cpu);
+            } else {
+                /*
+                 * In case of non-debug single step, just return
+                 */
+                *ret = EXCP_SINGLESTEP;
+            }
             return true;
         }
     } else if (!replay_has_interrupt()) {
@@ -892,7 +903,11 @@ static inline bool cpu_handle_interrupt(CPUState *cpu,
                  * next instruction.
                  */
                 if (unlikely(cpu->singlestep_enabled)) {
-                    cpu->exception_index = EXCP_DEBUG;
+                    if (!(cpu->singlestep_enabled & SSTEP_NODEBUG)) {
+                        cpu->exception_index = EXCP_DEBUG;
+                    } else {
+                        cpu->exception_index = EXCP_SINGLESTEP;
+                    }
                     bql_unlock();
                     return true;
                 }
