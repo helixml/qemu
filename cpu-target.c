@@ -339,6 +339,19 @@ void cpu_single_step(CPUState *cpu, int enabled)
     }
 }
 
+void cpu_emulate(CPUState *cpu, bool enabled)
+{
+    if (cpu->emulation_enabled != enabled) {
+        cpu->emulation_enabled = enabled;
+
+        if (enabled) {
+            /* FIXME: track dirty code to improve performance */
+            tb_flush(cpu);
+            tlb_flush(cpu);
+        }
+    }
+}
+
 void cpu_abort(CPUState *cpu, const char *fmt, ...)
 {
     va_list ap;

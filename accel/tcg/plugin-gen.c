@@ -388,6 +388,10 @@ bool plugin_gen_tb_start(CPUState *cpu, const DisasContextBase *db)
 {
     struct qemu_plugin_tb *ptb;
 
+    if (cpu->emulation_enabled) {
+        return false;
+    }
+
     if (!test_bit(QEMU_PLUGIN_EV_VCPU_TB_TRANS,
                   cpu->plugin_state->event_mask)) {
         return false;

@@ -55,6 +55,10 @@ struct qemu_plugin_ctx *plugin_id_to_ctx_locked(qemu_plugin_id_t id)
 
 static void plugin_cpu_update__async(CPUState *cpu, run_on_cpu_data data)
 {
+    if (cpu->emulation_enabled) {
+        return;
+    }
+
     bitmap_copy(cpu->plugin_state->event_mask,
                 &data.host_ulong, QEMU_PLUGIN_EV_MAX);
     tcg_flush_jmp_cache(cpu);
@@ -499,6 +503,10 @@ qemu_plugin_vcpu_syscall(CPUState *cpu, int64_t num, uint64_t a1, uint64_t a2,
     struct qemu_plugin_cb *cb, *next;
     enum qemu_plugin_event ev = QEMU_PLUGIN_EV_VCPU_SYSCALL;
 
+    if (cpu->emulation_enabled) {
+        return;
+    }
+
     if (!test_bit(ev, cpu->plugin_state->event_mask)) {
         return;
     }
@@ -520,6 +528,10 @@ void qemu_plugin_vcpu_syscall_ret(CPUState *cpu, int64_t num, int64_t ret)
 {
     struct qemu_plugin_cb *cb, *next;
     enum qemu_plugin_event ev = QEMU_PLUGIN_EV_VCPU_SYSCALL_RET;
+
+    if (cpu->emulation_enabled) {
+        return;
+    }
 
     if (!test_bit(ev, cpu->plugin_state->event_mask)) {
         return;

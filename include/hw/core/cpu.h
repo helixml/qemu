@@ -569,6 +569,9 @@ struct CPUState {
     /* track IOMMUs whose translations we've cached in the TCG TLB */
     GArray *iommu_notifiers;
 
+    /* doing emulation when not in TCG backend */
+    bool emulation_enabled;
+
     /*
      * MUST BE LAST in order to minimize the displacement to CPUArchState.
      */
@@ -1082,6 +1085,13 @@ void qemu_init_vcpu(CPUState *cpu);
  * Enables or disables single-stepping for @cpu.
  */
 void cpu_single_step(CPUState *cpu, int enabled);
+
+/**
+ * cpu_emulate:
+ * @cpu: CPU to set to emulation mode
+ * @enabled: enable emulation mode
+ */
+void cpu_emulate(CPUState *cpu, bool enabled);
 
 /* Breakpoint/watchpoint flags */
 #define BP_MEM_READ           0x01

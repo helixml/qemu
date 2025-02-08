@@ -32,6 +32,7 @@
 #include "qemu/main-loop.h"
 #include "qemu/guest-random.h"
 #include "qemu/timer.h"
+#include "exec/cpu-common.h"
 #include "exec/exec-all.h"
 #include "exec/hwaddr.h"
 #include "exec/tb-flush.h"
@@ -74,7 +75,7 @@ void tcg_cpu_destroy(CPUState *cpu)
 int tcg_cpu_exec(CPUState *cpu)
 {
     int ret;
-    assert(tcg_enabled());
+    assert(tcg_enabled() || cpu->emulation_enabled);
     cpu_exec_start(cpu);
     ret = cpu_exec(cpu);
     cpu_exec_end(cpu);

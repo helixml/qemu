@@ -791,7 +791,7 @@ done:
 
 void tb_flush(CPUState *cpu)
 {
-    if (tcg_enabled()) {
+    if (tcg_enabled() || unlikely(cpu->emulation_enabled)) {
         unsigned tb_flush_count = qatomic_read(&tb_ctx.tb_flush_count);
 
         if (cpu_in_serial_context(cpu)) {
