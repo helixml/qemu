@@ -2077,34 +2077,30 @@ int hvf_arch_vcpu_exec(CPUState *cpu)
     int ret;
     hv_return_t r;
 
+    if (!(cpu->singlestep_enabled & SSTEP_NOIRQ) &&
+        hvf_inject_interrupts(cpu)) {
+        return EXCP_INTERRUPT;
+    }
+
     if (cpu->halted) {
         return EXCP_HLT;
     }
 
     flush_cpu_state(cpu);
 
-    do {
-        if (!(cpu->singlestep_enabled & SSTEP_NOIRQ) &&
-            hvf_inject_interrupts(cpu)) {
-            return EXCP_INTERRUPT;
-        }
-
-        bql_unlock();
-        cpu_exec_start(cpu);
-        r = hv_vcpu_run(cpu->accel->fd);
-        cpu_exec_end(cpu);
-        bql_lock();
-        switch (r) {
-        case HV_SUCCESS:
-            ret = hvf_handle_vmexit(cpu, cpu->accel->exit);
-            break;
-        case HV_ILLEGAL_GUEST_STATE:
-            trace_hvf_illegal_guest_state();
-            /* fall through */
-        default:
-            g_assert_not_reached();
-        }
-    } while (ret == 0);
+    bql_unlock();
+    r = hv_vcpu_run(cpu->accel->fd);
+    bql_lock();
+    switch (r) {
+    case HV_SUCCESS:
+        ret = hvf_handle_vmexit(cpu, cpu->accel->exit);
+        break;
+    case HV_ILLEGAL_GUEST_STATE:
+        trace_hvf_illegal_guest_state();
+        /* fall through */
+    default:
+        g_assert_not_reached();
+    }
 
     return ret;
 }
