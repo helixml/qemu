@@ -17,6 +17,8 @@
 #include "system/hvf_int.h"
 #include "hw/core/cpu.h"
 #include "hw/boards.h"
+#include "qapi/error.h"
+#include "qapi/visitor.h"
 #include "trace.h"
 
 bool hvf_allowed;
@@ -150,6 +152,10 @@ static void hvf_set_phys_mem(MemoryRegionSection *section, bool add)
              */
              add = false;
         }
+    }
+
+    if (hvf_state->ipa_granule_size) {
+        page_size = hvf_state->ipa_granule_size;
     }
 
     if (!QEMU_IS_ALIGNED(int128_get64(section->size), page_size) ||
@@ -316,7 +322,7 @@ static int hvf_accel_init(AccelState *as, MachineState *ms)
         }
     }
 
-    ret = hvf_arch_vm_create(ms, (uint32_t)pa_range);
+    ret = hvf_arch_vm_create(ms, (uint32_t)pa_range, s->ipa_granule_size);
     if (ret == HV_DENIED) {
         error_report("Could not access HVF. Is the executable signed"
                      " with com.apple.security.hypervisor entitlement?");
@@ -340,6 +346,34 @@ static int hvf_gdbstub_sstep_flags(AccelState *as)
     return SSTEP_ENABLE | SSTEP_NOIRQ;
 }
 
+static void hvf_get_ipa_granule_size(Object *obj, Visitor *v,
+                                    const char *name, void *opaque,
+                                    Error **errp)
+{
+    HVFState *s = HVF_STATE(obj);
+    uint32_t value = s->ipa_granule_size;
+
+    visit_type_uint32(v, name, &value, errp);
+}
+
+static void hvf_set_ipa_granule_size(Object *obj, Visitor *v,
+                                     const char *name, void *opaque,
+                                     Error **errp)
+{
+    HVFState *s = HVF_STATE(obj);
+    uint32_t value;
+
+    if (!visit_type_uint32(v, name, &value, errp)) {
+        return;
+    }
+    if (value & (value - 1)) {
+        error_setg(errp, "ipa-granule-size must be a power of two.");
+        return;
+    }
+
+    s->ipa_granule_size = value;
+}
+
 static void hvf_accel_class_init(ObjectClass *oc, const void *data)
 {
     AccelClass *ac = ACCEL_CLASS(oc);
@@ -347,6 +381,12 @@ static void hvf_accel_class_init(ObjectClass *oc, const void *data)
     ac->init_machine = hvf_accel_init;
     ac->allowed = &hvf_allowed;
     ac->gdbstub_supported_sstep_flags = hvf_gdbstub_sstep_flags;
+
+    object_class_property_add(oc, "ipa-granule-size", "uint32",
+        hvf_get_ipa_granule_size, hvf_set_ipa_granule_size,
+        NULL, NULL);
+    object_class_property_set_description(oc, "ipa-granule-size",
+        "Size of a single guest page");
 }
 
 static const TypeInfo hvf_accel_type = {

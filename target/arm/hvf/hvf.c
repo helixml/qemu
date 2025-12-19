@@ -12,6 +12,9 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "qemu/log.h"
+#include <dlfcn.h>
+#include <AvailabilityMacros.h>
+#include <TargetConditionals.h>
 
 #include "system/runstate.h"
 #include "system/hvf.h"
@@ -880,7 +883,45 @@ void hvf_arch_vcpu_destroy(CPUState *cpu)
     assert_hvf_ok(ret);
 }
 
-hv_return_t hvf_arch_vm_create(MachineState *ms, uint32_t pa_range)
+static hv_return_t hvf_set_ipa_granule(hv_vm_config_t config,
+                                uint32_t ipa_granule_size)
+{
+    static hv_return_t (*set_ipa_granule)(hv_vm_config_t, uint32_t);
+    uint64_t page_size = qemu_real_host_page_size();
+
+    /* macOS 26 introduces a public API for setting granule size */
+#if defined(MAC_OS_X_VERSION_MAX_ALLOWED) && defined(MAC_OS_VERSION_26_0) && \
+    MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_26_0
+    if (__builtin_available(macOS 26, *)) {
+        hv_ipa_granule_t granule = HV_IPA_GRANULE_16KB;
+
+        if (ipa_granule_size == 4096) {
+            granule = HV_IPA_GRANULE_4KB;
+        } else if (ipa_granule_size != 16384) {
+            error_report("Unsupported granule size: 0x%x", ipa_granule_size);
+            return HV_UNSUPPORTED;
+        }
+
+        return hv_vm_config_set_ipa_granule(config, granule);
+    }
+#endif
+
+    /* older macOS need to use a private API */
+    if (!set_ipa_granule) {
+        set_ipa_granule = dlsym(RTLD_NEXT, "_hv_vm_config_set_ipa_granule");
+    }
+    if (set_ipa_granule) {
+        return set_ipa_granule(config, ipa_granule_size);
+    } else if (ipa_granule_size != page_size) {
+        error_report("Failed to find _hv_vm_config_set_ipa_granule");
+        return HV_UNSUPPORTED;
+    }
+
+    return HV_SUCCESS;
+}
+
+hv_return_t hvf_arch_vm_create(MachineState *ms, uint32_t pa_range,
+                               uint32_t ipa_granule_size)
 {
     hv_return_t ret;
     hv_vm_config_t config = hv_vm_config_create();
@@ -890,6 +931,13 @@ hv_return_t hvf_arch_vm_create(MachineState *ms, uint32_t pa_range)
         goto cleanup;
     }
     chosen_ipa_bit_size = pa_range;
+
+    if (ipa_granule_size) {
+        ret = hvf_set_ipa_granule(config, ipa_granule_size);
+        if (ret != HV_SUCCESS) {
+            goto cleanup;
+        }
+    }
 
     ret = hv_vm_create(config);
 
