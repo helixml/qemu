@@ -112,6 +112,7 @@ static QemuCocoaPasteboardTypeOwner *cbowner;
 @end
 
 static bool gl_dirty;
+static bool gl_scanout_texture;
 static uint32_t gl_scanout_id;
 static bool gl_scanout_y0_top;
 static QEMUGLContext gl_view_ctx;
@@ -171,7 +172,8 @@ static DisplayGLCtx dgc = {
         kCGLPFADisplayMask,
         mask,
         kCGLPFAOpenGLProfile,
-        (CGLPixelFormatAttribute)kCGLOGLPVersion_GL4_Core,
+        /* macOS exposes 4.1 via the 3.2 core selector. */
+        (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
         0
     };
 
@@ -185,6 +187,8 @@ static DisplayGLCtx dgc = {
             forLayerTime:(CFTimeInterval)t
              displayTime:(const CVTimeStamp *)ts
 {
+    CGLSetCurrentContext(ctx);
+    
     BQL_LOCK_GUARD();
     cocoa_gl_render();
 
@@ -2241,7 +2245,8 @@ static CGLPixelFormatObj cocoa_gl_create_cgl_pixel_format(int bpp)
     GLint npix;
     CGLPixelFormatAttribute attribs[] = {
         kCGLPFAOpenGLProfile,
-        (CGLPixelFormatAttribute)kCGLOGLPVersion_GL4_Core,
+        /* Request 3.2 core; macOS delivers 4.1 for this selector. */
+        (CGLPixelFormatAttribute)kCGLOGLPVersion_3_2_Core,
         kCGLPFAColorSize,
         bpp,
         kCGLPFADoubleBuffer,
@@ -2328,14 +2333,15 @@ static void cocoa_gl_render(void)
 
     glViewport(0, 0, size.width, size.height);
 
-    if (gl_scanout_id) {
-        glBindFramebuffer(GL_FRAMEBUFFER_EXT, 0);
+    if (gl_scanout_texture) {
         glBindTexture(GL_TEXTURE_2D, gl_scanout_id);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
         qemu_gl_run_texture_blit(dgc.gls, gl_scanout_y0_top);
     } else {
         glBindTexture(GL_TEXTURE_2D, surface->texture);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
         surface_gl_render_texture(dgc.gls, surface);
     }
 }
@@ -2366,7 +2372,7 @@ static void cocoa_gl_refresh(DisplayChangeListener *dcl)
 #endif
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            [[cocoaView layer] setNeedsDisplay];
+            [cocoaView.glLayer setNeedsDisplay];
         });
     }
 }
@@ -2375,6 +2381,7 @@ static void cocoa_gl_scanout_disable(DisplayChangeListener *dcl)
 {
     gl_scanout_id = 0;
     gl_dirty = true;
+    gl_scanout_texture = false;
     dispatch_async(dispatch_get_main_queue(), ^{
         cocoaView.scanout = QemuCocoaViewScanoutNone;
     });
@@ -2392,6 +2399,7 @@ static void cocoa_gl_scanout_texture(DisplayChangeListener *dcl,
     gl_scanout_id = backing_id;
     gl_scanout_y0_top = backing_y_0_top;
     gl_dirty = true;
+    gl_scanout_texture = true;
 #ifdef USE_METAL
     if (native.type == SCANOUT_TEXTURE_NATIVE_TYPE_METAL) {
         id<MTLTexture> mtlTexture = [(id<MTLTexture>)native.handle retain];
