@@ -5,7 +5,7 @@
 if host_os == 'darwin'
   helix_ss = ss.source_set()
 
-  helix_ss.add(files('helix-frame-export.c'))
+  helix_ss.add(files('helix-frame-export.m'))
 
   # macOS frameworks
   helix_ss.add(dependency('appleframeworks',
